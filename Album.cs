@@ -4,38 +4,27 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Newtonsoft.Json;
 
 namespace AssPain_FileManager
 {
+    [Serializable]
+    [JsonObject(MemberSerialization.OptIn)]
     public class Album : MusicBaseContainer
     {
+        [JsonProperty]
         public override string Title { get; }
         public override List<Song> Songs { get; } = new List<Song>();
-        public Song Song
-        {
-            get
-            {
-                return Songs.Count > 0 ? Songs[0] : new Song("No Name", new DateTime(1970, 1, 1), "Default", false);
-            }
-        }
+        public Song Song => Songs.Count > 0 ? Songs[0] : new Song("No Name", new DateTime(1970, 1, 1), "Default", false);
 
         public List<Artist> Artists { get; } = new List<Artist>();
-        public Artist Artist
-        {
-            get
-            {
-                return Artists.Count > 0 ? Artists[0] : new Artist("No Artist", "Default", false);
-            }
-        }
-        
+        public Artist Artist => Artists.Count > 0 ? Artists[0] : new Artist("No Artist", "Default", false);
+
         public string ImgPath { get; }
         public bool Initialized { get; private set; } = true;
         public bool Showable { get; private set; } = true;
-        public override Bitmap Image
-        {
-            get { return GetImage(); }
-        }
-        
+        public override Bitmap Image => GetImage();
+
         public void AddArtist(ref List<Artist> artists)
         {
             foreach (Artist artist in artists.Where(artist => !Artists.Contains(artist)))
@@ -192,14 +181,18 @@ namespace AssPain_FileManager
             Showable = showable;
         }
         
-        public override bool Equals(object obj)
+        [JsonConstructor]
+        public Album(string title)
         {
-            if (!(obj is Album item))
-            {
-                return false;
-            }
-            
-            return Equals(item);
+            Title = title;
+            Showable = false;
+            Initialized = false;
+        }
+        
+        
+        public override bool Equals(object? obj)
+        {
+            return obj is Album item && Equals(item);
         }
 
         protected bool Equals(Album other)
