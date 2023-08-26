@@ -10,8 +10,8 @@ public static class FileManager
 {
     //TODO: rewrite
     private static readonly string Root = "";
-    public static readonly string PrivatePath = "";
-    public static string MusicFolder = "";
+    public static readonly string PrivatePath = $"{Path.GetDirectoryName(typeof(FileManager).Assembly.Location)}/tmp";
+    public static string MusicFolder = $"{Path.GetDirectoryName(typeof(FileManager).Assembly.Location)}/music";
 
     public static readonly StateHandler StateHandler = new StateHandler();
 
