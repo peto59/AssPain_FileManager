@@ -6,11 +6,11 @@ using Tag = TagLib.Id3v2.Tag;
 
 namespace AssPain_FileManager;
 
-public static class FileManager
+public static partial class FileManager
 {
     //TODO: rewrite
     private static readonly string Root = "";
-    public static readonly string PrivatePath = $"{Path.GetDirectoryName(typeof(FileManager).Assembly.Location)}/tmp";
+    public static readonly string PrivatePath = $"{Path.GetDirectoryName(typeof(FileManager).Assembly.Location)}";
     public static string MusicFolder = $"{Path.GetDirectoryName(typeof(FileManager).Assembly.Location)}/music";
 
     public static readonly StateHandler StateHandler = new StateHandler();
@@ -313,20 +313,21 @@ public static class FileManager
 
     public static string Sanitize(string value)
     {
+        //TODO: may have fucked up, if so, copy from android
         value = System.Text.RegularExpressions.Regex.Replace(value, InvalidRegStr, "");
-        return System.Text.RegularExpressions.Regex.Replace(value, @"\s+|_{2,}", "_").Trim().Replace("_-_", "_")
+        return MyRegex().Replace(value, "_").Trim().Replace("_-_", "_")
             .Replace(",_", ",");
         //return value.Replace("/", "").Replace("|", "").Replace("\\", "").Replace(":", "").Replace("*", "").Replace("\"", "").Replace("#", "").Replace("?", "").Replace("<", "").Replace(">", "").Trim().Replace(" ", "_");
     }
 
-    public static int GetAvailableFile(string name = "video")
+    public static int GetAvailableFile(string name = "video", string extension = "mp3")
     {
+        Directory.CreateDirectory($"{PrivatePath}/tmp");
         int i = 0;
-        while (File.Exists($"{PrivatePath}/tmp/{name}{i}.mp3"))
+        while (File.Exists($"{PrivatePath}/tmp/{name}{i}.{extension.TrimStart('.')}"))
         {
             i++;
         }
-
         string dest = $"{PrivatePath}/tmp/{name}{i}.mp3";
         File.Create(dest).Close();
         return i;
@@ -431,7 +432,7 @@ public static class FileManager
 
     public static List<Song> GetTrustedSyncTargetSongs(string host)
     {
-        string json = File.ReadAllText($"{PrivatePath}/sync_targets.json");
+        string json = File.ReadAllText($"{PrivatePath}/trusted_sync_targets.json");
         SongJsonConverter customConverter = new SongJsonConverter(true);
         Dictionary<string, List<Song>> targets = JsonConvert.DeserializeObject<Dictionary<string, List<Song>>>(json, customConverter);
         return targets.TryGetValue(host, out List<Song> target) ? target : new List<Song>();
@@ -502,7 +503,7 @@ public static class FileManager
         }
     }
 
-    public static void AddSong(string path, bool isNew = false, bool generateStateHandlerEntry = true)
+    public static (List<string> missingArtists, (string album, string artistPath) missingAlbum) AddSong(string path, bool isNew = false, bool generateStateHandlerEntry = true)
     {
         using TagLib.File tfile = TagLib.File.Create(path, ReadStyle.PictureLazy);
         tfile.Mode = TagLib.File.AccessMode.Write;
@@ -510,7 +511,7 @@ public static class FileManager
         if (!string.IsNullOrEmpty(tfile.Tag.Title))
         {
             title = tfile.Tag.Title;
-            if (title.Contains(".mp3"))
+            if (title.EndsWith(".mp3"))
             {
                 tfile.Tag.Title = tfile.Tag.Title.Replace(".mp3", "");
                 title = tfile.Tag.Title;
@@ -524,21 +525,21 @@ public static class FileManager
             tfile.Save();
         }
 
-        string[] artists = tfile.Tag.Performers.Length > 0 ? tfile.Tag.Performers :
-            tfile.Tag.AlbumArtists.Length > 0 ? tfile.Tag.AlbumArtists : new[] { "No Artist" };
+        string[] artists = (tfile.Tag.Performers.Any() ? tfile.Tag.Performers : tfile.Tag.AlbumArtists.Any() ? tfile.Tag.AlbumArtists : new []{ "No Artist" }).Distinct().ToArray();
 
+        string album = tfile.Tag.Album;
+        tfile.Dispose();
         if (isNew)
         {
             string output = $"{MusicFolder}/{Sanitize(GetAlias(artists[0]))}";
-            if (!string.IsNullOrEmpty(tfile.Tag.Album))
+            if (!string.IsNullOrEmpty(album))
             {
-                output = $"{output}/{Sanitize(tfile.Tag.Album)}";
+                output = $"{output}/{Sanitize(album)}";
             }
-
-            output = $"{output}/{Sanitize(title)}";
+            Directory.CreateDirectory(output);
+            output = $"{output}/{Sanitize(title)}.mp3";
             try
             {
-                Directory.CreateDirectory(output);
 #if DEBUG
                 MyConsole.WriteLine("Moving " + path);
 #endif
@@ -550,14 +551,25 @@ public static class FileManager
                 MyConsole.WriteLine(e.ToString());
 #endif
             }
-
             path = output;
         }
 
+
         if (generateStateHandlerEntry)
         {
-            AddSong(path, title, artists, tfile.Tag.Album);
+            AddSong(path, title, artists, album);
         }
+
+        List<string> missingArtists = (from artist in artists let artistPath = $"{MusicFolder}/{Sanitize(GetAlias(artist))}" where !File.Exists($"{artistPath}/cover.jpg") && !File.Exists($"{artistPath}/cover.png") select artist).ToList();
+        if (!string.IsNullOrEmpty(album))
+        {
+            string albumPath = $"{MusicFolder}/{Sanitize(GetAlias(artists[0]))}/{Sanitize(album)}";
+            if (!File.Exists($"{albumPath}/cover.jpg") && !File.Exists($"{albumPath}/cover.png"))
+            {
+                return (missingArtists, (album, Sanitize(GetAlias(artists[0]))));
+            }
+        }
+        return (missingArtists, (string.Empty, string.Empty));
     }
 
     public static void AddSong(string path, string title, string[] artists, string artistId,
@@ -611,7 +623,7 @@ public static class FileManager
         tfile.Save();
         tfile.Dispose();
         Directory.CreateDirectory(output);
-        output = $"{output}/{Sanitize(title)}/";
+        output = $"{output}/{Sanitize(title)}.mp3";
         try
         {
             File.Move(path, output);
@@ -631,4 +643,27 @@ public static class FileManager
 
         AddSong(path, title, artists, album);
     }
+    
+    public static string GetImageFormat(byte[] image)
+    {
+        byte[] png = { 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82 };
+        byte[] jpg = { 255, 216, 255 };
+        if (image.Take(3).SequenceEqual(jpg))
+        {
+            return ".jpg";
+        }
+
+        return image.Take(16).SequenceEqual(png) ? ".png" : ".idk";
+    }
+    
+    public static string GetImageFormat(string imagePath)
+    {
+        using BinaryReader reader = new BinaryReader(File.OpenRead(imagePath));
+        byte[] magicBytes = reader.ReadBytes(16);
+
+        return GetImageFormat(magicBytes);
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex("\\s+|_{2,}")]
+    private static partial System.Text.RegularExpressions.Regex MyRegex();
 }

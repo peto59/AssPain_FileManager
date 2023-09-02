@@ -196,6 +196,14 @@ namespace AssPain_FileManager
             Title = title;
             Initialized = false;
         }
+        
+        public Artist(Artist artist, string imgPath)
+        {
+            Title = artist.Title;
+            Songs = artist.Songs;
+            Albums = artist.Albums;
+            ImgPath = imgPath;
+        }
 
         public override bool Equals(object? obj)
         {

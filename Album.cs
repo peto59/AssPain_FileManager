@@ -189,6 +189,14 @@ namespace AssPain_FileManager
             Initialized = false;
         }
         
+        public Album(Album album, string imgPath)
+        {
+            Title = album.Title;
+            Songs = album.Songs;
+            Artists = album.Artists;
+            ImgPath = imgPath;
+        }
+        
         
         public override bool Equals(object? obj)
         {
