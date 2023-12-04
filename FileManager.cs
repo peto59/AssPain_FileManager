@@ -328,7 +328,7 @@ public static partial class FileManager
         {
             i++;
         }
-        string dest = $"{PrivatePath}/tmp/{name}{i}.mp3";
+        string dest = $"{PrivatePath}/tmp/{name}{i}.{extension.TrimStart('.')}";
         File.Create(dest).Close();
         return i;
     }
